@@ -1,0 +1,88 @@
+# Team server. db and web publish no ports. Only proxy is reachable from the host.
+# The Notion token is mounted on worker-sync and nowhere else.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ndup
+      POSTGRES_DB: ndup
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+    secrets: [pg_password]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    command:
+      ["postgres", "-c", "shared_buffers=8GB", "-c", "maintenance_work_mem=4GB", "-c", "max_parallel_maintenance_workers=4"]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ndup"]
+      interval: 2s
+      retries: 30
+
+  egress:
+    image: alpine:3.20
+    command: ["echo", "replace with the tinyproxy image from deploy/egress-proxy.conf"]
+    networks: [internal, egress]
+
+  worker-sync:
+    image: ndup:local
+    command: ["ndup", "worker", "--role", "sync"]
+    environment:
+      HTTPS_PROXY: http://egress:8888
+      HF_HUB_OFFLINE: "1"
+    secrets: [notion_token, pg_password_worker]
+    volumes: [./config:/config]
+    networks: [internal]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker-embed:
+    image: ndup:local
+    command: ["ndup", "worker", "--role", "embed"]
+    environment:
+      HF_HUB_OFFLINE: "1"
+    secrets: [pg_password_worker]
+    networks: [internal]
+
+  worker-analyze:
+    image: ndup:local
+    command: ["ndup", "worker", "--role", "analyze"]
+    environment:
+      HF_HUB_OFFLINE: "1"
+    secrets: [pg_password_worker]
+    networks: [internal]
+
+  web:
+    image: ndup:local
+    command: ["ndup", "web", "--host", "0.0.0.0"]
+    secrets: [pg_password_web, proxy_shared_secret, notion_webhook_token]
+    networks: [internal, frontend]
+
+  proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    ports: ["443:443"]
+    networks: [frontend, egress]
+    depends_on: [web]
+
+secrets:
+  notion_token:
+    file: ./secrets/notion_token
+  notion_webhook_token:
+    file: ./secrets/notion_webhook_token
+  pg_password:
+    file: ./secrets/pg_password
+  pg_password_worker:
+    file: ./secrets/pg_password_worker
+  pg_password_web:
+    file: ./secrets/pg_password_web
+  proxy_shared_secret:
+    file: ./secrets/proxy_shared_secret
+
+volumes:
+  pgdata: {}
+
+networks:
+  internal:
+    internal: true
+  frontend: {}
+  egress: {}

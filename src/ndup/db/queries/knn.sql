@@ -1,0 +1,26 @@
+-- Candidate kNN templates. model_id and dims are literals so the partial HNSW
+-- index matches. Session setup (run before these statements):
+--   SET hnsw.ef_search = 100;
+--   SET hnsw.iterative_scan = relaxed_order;
+
+-- Doc kNN: fetch 3*k then filter. k = 20, fetch = 60.
+-- SELECT id, sim FROM (
+--   SELECT doc_id AS id, 1 - (vec::halfvec({dims}) <=> $1) AS sim
+--   FROM doc_embedding
+--   WHERE model_id = {model_id}
+--   ORDER BY vec::halfvec({dims}) <=> $1
+--   LIMIT 60
+-- ) knn
+-- JOIN document d ON d.id = knn.id
+-- WHERE d.status = 'active' AND d.lang = 'en' AND NOT d.is_stub AND d.id <> $2;
+
+-- Chunk kNN: fetch 30, keep 10 after filters.
+-- SELECT id, doc_id, sim FROM (
+--   SELECT c.id, c.doc_id, 1 - (e.vec::halfvec({dims}) <=> $1) AS sim
+--   FROM embedding e
+--   JOIN chunk c ON c.embed_hash = e.embed_hash
+--   WHERE e.model_id = {model_id}
+--   ORDER BY e.vec::halfvec({dims}) <=> $1
+--   LIMIT 30
+-- ) knn
+-- WHERE doc_id <> $2 AND sim >= $3;

@@ -1,0 +1,27 @@
+# Solo laptop. Postgres is local to the compose network. The CLI runs on the host
+# or as a one-shot container. No web port is published.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: ndup
+      POSTGRES_PASSWORD: ndup
+      POSTGRES_DB: ndup
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ndup"]
+      interval: 2s
+      retries: 30
+
+  cli:
+    image: ndup:local
+    profiles: ["cli"]
+    environment:
+      HF_HUB_OFFLINE: "1"
+      NDUP_STORAGE__DATABASE_URL: postgresql://ndup:ndup@db:5432/ndup
+    network_mode: "service:db"
+    entrypoint: ["ndup"]
+    depends_on:
+      db:
+        condition: service_healthy

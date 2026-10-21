@@ -1,0 +1,14 @@
+{
+  "name": "ndup-pod",
+  "imageName": "ghcr.io/anikal2001/ndup-pod:local",
+  "gpuTypeIds": ["NVIDIA GeForce RTX 4090", "NVIDIA L4"],
+  "containerDiskInGb": 20,
+  "volumeInGb": 50,
+  "volumeMountPath": "/workspace",
+  "ports": [],
+  "env": [
+    {"key": "HF_HUB_OFFLINE", "value": "1"},
+    {"key": "NDUP_PROFILE", "value": "pod"}
+  ],
+  "notes": "No inbound HTTP ports. cloudflared and the network volume are Phase 2. Secrets come from the RunPod secret store, not this file."
+}
