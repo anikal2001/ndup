@@ -81,9 +81,25 @@ class RetentionSettings(BaseModel):
     cluster_event_days: int = 400
 
 
+DEFAULT_POD_IMAGE = "ghcr.io/anikal2001/ndup-pod:0.1.0"
+
+
 class PodSettings(BaseModel):
+    """Non-secret pod settings. The RunPod API key never lives here."""
+
     ingress: Ingress = "cloudflare-tunnel"
     backup_url: str = ""
+    volume_name: str = "ndup"
+    volume_id: str = ""
+    data_center: str = "US-KS-2"
+    volume_gb: int = 100
+    gpu_id: str = "NVIDIA GeForce RTX 4090"
+    cpu_id: str = "cpu5c"
+    vcpu_count: int = 4
+    image: str = DEFAULT_POD_IMAGE
+    pod_id: str = ""
+    disk_gb: int = 40
+    web_port: int = 8080
 
 
 class DeploySettings(BaseModel):
@@ -210,7 +226,11 @@ def load_settings(
         merged["profile"] = profile
         merged = _deep_merge(PROFILE_DEFAULTS[profile], merged)
         merged["profile"] = profile
-    return Settings(**merged)
+    settings = Settings(**merged)
+    database_url = os.environ.get("NDUP_DATABASE_URL")
+    if database_url:
+        settings.storage.database_url = database_url
+    return settings
 
 
 def write_settings(path: Path, settings: Settings) -> None:
