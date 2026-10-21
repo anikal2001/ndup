@@ -1,0 +1,7 @@
+{
+  "near_copy": 1.0,
+  "duplicate": 1.0,
+  "subset": 1.0,
+  "partial": 1.0,
+  "duplicate_or_near_copy": 1.0
+}
