@@ -5,7 +5,10 @@
 set -eu
 
 LEASE="${NDUP_LEASE:-/workspace/ndup.lease}"
-POD_ID="${NDUP_POD_ID:-local}"
+if [ -z "${NDUP_POD_ID:-}" ]; then
+  NDUP_POD_ID="${RUNPOD_POD_ID:-local}"
+  export NDUP_POD_ID
+fi
 PGDATA="${PGDATA:-/workspace/pgdata}"
 
 python - <<PY
