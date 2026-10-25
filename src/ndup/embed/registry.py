@@ -6,6 +6,7 @@ from typing import Any
 
 from ndup.analysis.thresholds import shipped_for
 from ndup.embed.fake_provider import FAKE_MODEL, FakeEmbeddingProvider
+from ndup.embed.openai_provider import OPENAI_MODELS, OPENAI_RUNTIME, OpenAIEmbeddingProvider
 from ndup.embed.st_provider import BGE_MODEL, SentenceTransformerProvider
 from ndup.errors import NdUpError
 
@@ -27,7 +28,9 @@ def knn_session_sql() -> tuple[str, str]:
     return ("SET hnsw.ef_search = 100", "SET hnsw.iterative_scan = relaxed_order")
 
 
-def runtime_for(device: str, requested: str | None = None) -> str:
+def runtime_for(device: str, requested: str | None = None, model: str | None = None) -> str:
+    if model in OPENAI_MODELS:
+        return OPENAI_RUNTIME
     if requested:
         return requested
     if device == "cuda":
@@ -42,7 +45,12 @@ def build_provider(model: str, device: str = "auto", runtime: str = "onnx-int8")
         return FakeEmbeddingProvider()
     if model == BGE_MODEL:
         return SentenceTransformerProvider(device=device, runtime=runtime)
-    raise NdUpError(f"Unknown embedding model {model!r}. Use {BGE_MODEL} or the local test model {FAKE_MODEL}.")
+    if model in OPENAI_MODELS:
+        return OpenAIEmbeddingProvider(model=model)
+    raise NdUpError(
+        f"Unknown embedding model {model!r}. Use {BGE_MODEL}, the local test model {FAKE_MODEL}, "
+        f"or an OpenAI model ({', '.join(sorted(OPENAI_MODELS))})."
+    )
 
 
 def initial_thresholds(model: str) -> dict[str, Any]:

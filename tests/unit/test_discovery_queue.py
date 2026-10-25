@@ -54,7 +54,7 @@ async def test_search_miss_is_found_by_the_tree() -> None:
 
     def search(request: httpx.Request) -> httpx.Response:
         body = request.read()
-        if b"database" in body:
+        if b"data_source" in body:
             return httpx.Response(200, json={"results": [], "has_more": False})
         results = [_page(doc_id) for doc_id in search_ids]
         return httpx.Response(200, json={"results": results, "has_more": False})
@@ -156,7 +156,7 @@ async def test_kill_resume_and_no_partial_page(monkeypatch: pytest.MonkeyPatch) 
     store = MemoryStore()
 
     def search(request: httpx.Request) -> httpx.Response:
-        if b"database" in request.content:
+        if b"data_source" in request.content:
             return httpx.Response(200, json={"results": [], "has_more": False})
         return httpx.Response(200, json={"results": [_page(doc_id)], "has_more": False})
 

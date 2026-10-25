@@ -16,6 +16,7 @@ from ndup.errors import NdUpError
 SECRET_ENV: dict[str, str] = {
     "notion_token": "NDUP_NOTION_TOKEN",
     "notion_webhook_token": "NDUP_NOTION_WEBHOOK_TOKEN",
+    "openai_api_key": "NDUP_OPENAI_API_KEY",
     "pg_password_worker": "NDUP_PG_PASSWORD_WORKER",
     "pg_password_web": "NDUP_PG_PASSWORD_WEB",
     "proxy_shared_secret": "NDUP_PROXY_SHARED_SECRET",

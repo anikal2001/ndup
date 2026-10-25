@@ -297,7 +297,7 @@ def test_cli_config_phase2_and_roundtrip(tmp_path: Path, monkeypatch: pytest.Mon
 
     def search(request: httpx.Request) -> httpx.Response:
         raw = request.read()
-        if b"database" in raw:
+        if b"data_source" in raw:
             return httpx.Response(200, json={"results": [], "has_more": False})
         return httpx.Response(
             200,
