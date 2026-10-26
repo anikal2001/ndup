@@ -75,11 +75,16 @@ class NotionClient:
             await self.bucket.acquire()
             try:
                 response = await self._client.request(method, path, json=json, params=params)
-            except httpx.TimeoutException as exc:
+            except httpx.TimeoutException:
                 self.bucket.release()
                 last_error = NotionError(f"Timeout calling {path}")
                 await self._backoff(attempt)
-                del exc
+                continue
+            except httpx.TransportError as exc:
+                # Connection reset or dropped mid-read. Retry like a timeout.
+                self.bucket.release()
+                last_error = NotionError(f"Transport error calling {path}: {type(exc).__name__}")
+                await self._backoff(attempt)
                 continue
             self.request_count += 1
             notion_requests.inc()
@@ -162,17 +167,24 @@ class NotionClient:
             yield item
 
     async def search_databases(self) -> AsyncIterator[dict[str, Any]]:
+        """Yield parent database objects. API 2025-09-03 searches data sources, not databases."""
+        seen: set[str] = set()
         async for item in self.paginate(
             "POST",
             "/search",
             json={
-                "filter": {"property": "object", "value": "database"},
+                "filter": {"property": "object", "value": "data_source"},
                 "sort": {"direction": "descending", "timestamp": "last_edited_time"},
                 "page_size": 100,
             },
             params={"filter_properties": "title"},
         ):
-            yield item
+            parent = item.get("parent") or {}
+            database_id = parent.get("database_id") if isinstance(parent, dict) else None
+            if not isinstance(database_id, str) or database_id in seen:
+                continue
+            seen.add(database_id)
+            yield await self.database(database_id)
 
     async def page(self, page_id: str) -> dict[str, Any]:
         return await self.request("GET", f"/pages/{page_id}")

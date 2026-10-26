@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ndup.embed.fake_provider import FAKE_MODEL
+from ndup.embed.openai_provider import OPENAI_MODELS
 from ndup.embed.st_provider import BGE_MODEL
 
 
@@ -102,9 +103,22 @@ BGE_SHIPPED = Thresholds(
 )
 
 
+# Provisional prior for text-embedding-3-*; not fitted. Run ``ndup calibrate``.
+OPENAI_SHIPPED = Thresholds(
+    tau_chunk=0.80,
+    tau_doc=0.76,
+    short_doc_delta=0.05,
+    source="provisional-openai",
+    n_labels=0,
+    f1=None,
+)
+
+
 def shipped_for(model: str) -> dict[str, Any]:
     if model in {FAKE_MODEL, "fake"}:
         return FAKE_SHIPPED.to_json()
     if model == BGE_MODEL:
         return BGE_SHIPPED.to_json()
+    if model in OPENAI_MODELS:
+        return OPENAI_SHIPPED.to_json()
     return FAKE_SHIPPED.to_json()

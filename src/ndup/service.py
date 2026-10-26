@@ -32,7 +32,7 @@ def open_store(database_url: str) -> Any:
 
 
 def ensure_model(store: Any, settings: Settings) -> Any:
-    runtime = runtime_for(settings.embedding.device, settings.embedding.runtime)
+    runtime = runtime_for(settings.embedding.device, settings.embedding.runtime, settings.embedding.model)
     provider = build_provider(settings.embedding.model, settings.embedding.device, runtime)
     store.register_model(
         provider.model,

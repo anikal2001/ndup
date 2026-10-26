@@ -14,9 +14,12 @@ from pathlib import Path
 
 from ndup.errors import NdUpError
 
+KEYRING_SERVICE = "ndup"
+
 SECRET_ENV: dict[str, str] = {
     "notion_token": "NDUP_NOTION_TOKEN",
     "notion_webhook_token": "NDUP_NOTION_WEBHOOK_TOKEN",
+    "openai_api_key": "NDUP_OPENAI_API_KEY",
     "pg_password_worker": "NDUP_PG_PASSWORD_WORKER",
     "pg_password_web": "NDUP_PG_PASSWORD_WEB",
     "proxy_shared_secret": "NDUP_PROXY_SHARED_SECRET",
@@ -95,7 +98,7 @@ def _read_keyring(name: str) -> str | None:
     except ImportError:
         return None
     try:
-        value = keyring.get_password("ndup", name)
+        value = keyring.get_password(KEYRING_SERVICE, name)
     except Exception:
         return None
     if isinstance(value, str) and value:
@@ -109,7 +112,7 @@ def _write_keyring(name: str, value: str) -> bool:
     except ImportError:
         return False
     try:
-        keyring.set_password("ndup", name, value)
+        keyring.set_password(KEYRING_SERVICE, name, value)
     except Exception:
         return False
     return True

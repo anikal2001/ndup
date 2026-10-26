@@ -8,6 +8,7 @@ import psycopg
 from psycopg import Connection
 from psycopg.rows import dict_row
 
+from ndup.db.local import EXTENSION_SQL
 from ndup.errors import NdUpError
 
 MIGRATION_DIR = Path(__file__).resolve().parent / "migrations"
@@ -20,7 +21,14 @@ def connect(database_url: str) -> Connection[dict[str, object]]:
     except ImportError as exc:
         raise NdUpError("pgvector is required to connect") from exc
     conn = psycopg.connect(database_url, row_factory=dict_row)
-    register_vector(conn)
+    try:
+        register_vector(conn)
+    except psycopg.ProgrammingError:
+        # Fresh database: 001_schema.sql creates the extension, but the type
+        # adapter has to exist before any migration can run.
+        conn.execute(EXTENSION_SQL)
+        conn.commit()
+        register_vector(conn)
     return conn
 
 
