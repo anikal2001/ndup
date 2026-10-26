@@ -19,11 +19,21 @@ from ndup import __version__
 from ndup.analysis.calibrate import fit_thresholds
 from ndup.analysis.relations import EvidenceView
 from ndup.config import Settings, load_settings, redacted_dump, write_settings
+from ndup.db.local import ensure_local_database
 from ndup.doctor import DoctorContext, bench_provider, evaluate, failed, provider_imports_http
 from ndup.embed.registry import build_provider
 from ndup.errors import NdUpError
 from ndup.model import order_pair
 from ndup.notion.estimate import Estimate, build_estimate, format_estimate
+from ndup.runpod import (
+    RunPodClient,
+    RunPodError,
+    bring_up,
+    connect_account,
+    format_report,
+    pod_status,
+    stop_pod,
+)
 from ndup.secrets import install_redaction, known_secret_values, resolve_secret, rotate_notion_token
 from ndup.service import (
     analyze_store,
@@ -48,6 +58,10 @@ sync_app = typer.Typer(help="Read pages from Notion.")
 show_app = typer.Typer(no_args_is_help=True, help="Inspect clusters, documents, and pairs.")
 ignore_app = typer.Typer(no_args_is_help=True, help="Ignore a pair, document, or root.")
 secrets_app = typer.Typer(no_args_is_help=True, help="Rotate secrets. Values are never printed.")
+runpod_app = typer.Typer(
+    no_args_is_help=True,
+    help="Secure Cloud volume and pod. The laptop calls the API and does not build an image.",
+)
 console = Console()
 err_console = Console(stderr=True)
 
@@ -64,8 +78,9 @@ def compose_argv(action: str, *, solo: bool) -> list[str]:
 
 
 class _State:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, config_path: Path | None = None) -> None:
         self.settings = settings
+        self.config_path = config_path
 
 
 @app.callback()
@@ -84,7 +99,7 @@ def main(
         err_console.print(str(exc))
         raise typer.Exit(code=1) from exc
     install_redaction(known_secret_values())
-    ctx.obj = _State(settings)
+    ctx.obj = _State(settings, config)
 
 
 def _state(ctx: typer.Context) -> _State:
@@ -143,6 +158,13 @@ def init_cmd(
     destination = config_out or _default_config_path()
     write_settings(destination, settings)
     console.print(f"Wrote {destination}")
+    try:
+        note = ensure_local_database(settings.storage.database_url)
+    except NdUpError as exc:
+        err_console.print(str(exc))
+        raise typer.Exit(code=1) from exc
+    if note:
+        console.print(note)
     store = _open(settings)
     try:
         ensure_model(store, settings)
@@ -688,7 +710,9 @@ def version_cmd() -> None:
 def _compose(action: str, *, solo: bool) -> None:
     argv = compose_argv(action, solo=solo)
     if shutil.which("docker") is None:
-        err_console.print("docker is not installed. Command: " + " ".join(argv))
+        err_console.print(
+            "Postgres is selected with NDUP_DATABASE_URL. Compose is optional. Command: " + " ".join(argv)
+        )
         raise typer.Exit(code=1)
     raise typer.Exit(subprocess.call(argv))
 
@@ -776,12 +800,91 @@ def _examples_from_labels(store: Any, labels: list[tuple[UUID, UUID, str]]) -> l
     return examples
 
 
+def _runpod_key() -> str:
+    key = resolve_secret("runpod_api_key")
+    if not key:
+        err_console.print("Set RUNPOD_API_KEY or run ndup runpod connect.")
+        raise typer.Exit(code=1)
+    return key
+
+
+def _save_pod(ctx: typer.Context, settings: Settings, volume_id: str, pod_id: str) -> None:
+    settings.deploy.target = "pod"
+    settings.deploy.pod.volume_id = volume_id
+    settings.deploy.pod.pod_id = pod_id
+    path = _state(ctx).config_path or _default_config_path()
+    write_settings(path, settings)
+
+
+@runpod_app.command("connect")
+def runpod_connect(
+    api_key: str | None = typer.Option(None, "--api-key", envvar="RUNPOD_API_KEY"),
+) -> None:
+    """Store the API key and check the account. The key is never printed."""
+    if not api_key:
+        err_console.print("Set RUNPOD_API_KEY. It is stored in the OS keychain.")
+        raise typer.Exit(code=1)
+    try:
+        where = connect_account(api_key)
+    except RunPodError as exc:
+        err_console.print(str(exc))
+        raise typer.Exit(code=1) from exc
+    console.print(f"RunPod account ok. Key stored in {where}.")
+
+
+@runpod_app.command("up")
+def runpod_up(
+    ctx: typer.Context,
+    cpu: bool = typer.Option(False, "--cpu/--gpu"),
+) -> None:
+    """Create or reuse a Secure Cloud volume and pod, start it, and print the URL."""
+    settings = _state(ctx).settings
+    key = _runpod_key()
+    try:
+        with RunPodClient(key) as client:
+            report = bring_up(client, settings, cpu=cpu)
+    except RunPodError as exc:
+        err_console.print(str(exc))
+        raise typer.Exit(code=1) from exc
+    _save_pod(ctx, settings, report.volume_id, report.pod_id)
+    console.print(format_report(report))
+
+
+@runpod_app.command("status")
+def runpod_status(ctx: typer.Context) -> None:
+    """Show the recorded pod."""
+    settings = _state(ctx).settings
+    key = _runpod_key()
+    try:
+        with RunPodClient(key) as client:
+            report = pod_status(client, settings)
+    except RunPodError as exc:
+        err_console.print(str(exc))
+        raise typer.Exit(code=1) from exc
+    console.print(format_report(report))
+
+
+@runpod_app.command("down")
+def runpod_down(ctx: typer.Context) -> None:
+    """Stop the recorded pod. The network volume is kept."""
+    settings = _state(ctx).settings
+    key = _runpod_key()
+    try:
+        with RunPodClient(key) as client:
+            report = stop_pod(client, settings)
+    except RunPodError as exc:
+        err_console.print(str(exc))
+        raise typer.Exit(code=1) from exc
+    console.print(format_report(report))
+
+
 app.add_typer(config_app, name="config")
 app.add_typer(db_app, name="db")
 app.add_typer(sync_app, name="sync")
 app.add_typer(show_app, name="show")
 app.add_typer(ignore_app, name="ignore")
 app.add_typer(secrets_app, name="secrets")
+app.add_typer(runpod_app, name="runpod")
 
 
 if __name__ == "__main__":

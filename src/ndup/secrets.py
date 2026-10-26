@@ -1,6 +1,7 @@
 """Secret lookup, log redaction, and Notion token rotation.
 
-Lookup order: ``/run/secrets/<name>``, then the environment, then the OS keyring.
+Lookup order: ``/run/secrets/<name>``, then the environment, then the OS keyring,
+then ``~/.config/ndup/secrets/<name>``. The RunPod key is ``RUNPOD_API_KEY``.
 Secret values are never written to config, logs, or exports.
 """
 
@@ -23,6 +24,7 @@ SECRET_ENV: dict[str, str] = {
     "cloudflare_tunnel_token": "NDUP_CLOUDFLARE_TUNNEL_TOKEN",
     "backup_credentials": "NDUP_BACKUP_CREDENTIALS",
     "text_encryption_key": "NDUP_TEXT_ENCRYPTION_KEY",
+    "runpod_api_key": "RUNPOD_API_KEY",
 }
 
 _INSTALLED: list[str] = []
@@ -45,7 +47,38 @@ def resolve_secret(name: str, secrets_dir: Path | None = None) -> str | None:
         env_value = os.environ.get(env_name)
         if env_value:
             return env_value
-    return _read_keyring(name)
+    keyring_value = _read_keyring(name)
+    if keyring_value:
+        return keyring_value
+    user_file = user_secret_path(name)
+    if user_file.is_file():
+        value = user_file.read_text(encoding="utf-8").strip()
+        if value:
+            return value
+    return None
+
+
+def user_secret_path(name: str) -> Path:
+    """Mode-600 fallback outside the repo when the OS keyring is unavailable."""
+    return Path.home() / ".config" / "ndup" / "secrets" / name
+
+
+def store_secret(name: str, value: str) -> str:
+    """Store a secret in the OS keyring, or a mode-600 file outside the repo.
+
+    The return value is ``keyring`` or a filesystem path. It never includes
+    the secret itself.
+    """
+    cleaned = value.strip()
+    if not cleaned:
+        raise SecretError(f"Refusing to store an empty {name}")
+    if _write_keyring(name, cleaned):
+        return "keyring"
+    target = user_secret_path(name)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(cleaned + "\n", encoding="utf-8")
+    os.chmod(target, 0o600)
+    return str(target)
 
 
 def known_secret_values(secrets_dir: Path | None = None) -> list[str]:
@@ -69,6 +102,18 @@ def _read_keyring(name: str) -> str | None:
     if isinstance(value, str) and value:
         return value
     return None
+
+
+def _write_keyring(name: str, value: str) -> bool:
+    try:
+        import keyring
+    except ImportError:
+        return False
+    try:
+        keyring.set_password("ndup", name, value)
+    except Exception:
+        return False
+    return True
 
 
 class RedactFilter(logging.Filter):

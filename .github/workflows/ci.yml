@@ -66,6 +66,7 @@ jobs:
       - run: uv run pytest -m integration
 
   images:
+    # Version tags only. Pull requests and laptops do not build images.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [unit, quality, integration]
     runs-on: ubuntu-latest

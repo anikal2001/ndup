@@ -1,43 +1,66 @@
 # Laptop quickstart
 
-Phase 1 is a solo terminal workflow. Embeddings stay on the machine that runs `ndup`. The default model is `BAAI/bge-base-en-v1.5`. Tests and offline development use `fake-bow-v1`, which does not download weights.
+This runs on the laptop. No RunPod and no Docker.
 
-## Install
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if it is missing. `main` is enough.
 
 ```bash
+git clone https://github.com/anikal2001/ndup.git
+cd ndup
 uv sync --group dev
-uv run pytest -m unit
-```
-
-To embed with the real model later, install the local extra and let sentence-transformers read a cache you already populated. The process sets `HF_HUB_OFFLINE=1`.
-
-```bash
-uv sync --group dev --extra local
-```
-
-## Database
-
-A memory URL is enough to try the commands. Postgres 17 with pgvector 0.8 is the supported store.
-
-```bash
-docker compose -f docker-compose.solo.yml up -d
-```
-
-Or point `storage.database_url` at a Postgres you already run. `ndup db up` prints the compose command when Docker is missing.
-
-## First run
-
-```bash
 export NDUP_NOTION_TOKEN=secret_...
-uv run ndup init --database-url postgresql://ndup:ndup@localhost:5432/ndup --model fake-bow-v1
+uv run ndup init --database-url memory://.ndup-store --model fake-bow-v1
 uv run ndup sync
 uv run ndup embed
 uv run ndup analyze --full
 uv run ndup show clusters
 ```
 
-`ndup init` and `ndup sync --estimate` print an ETA from a sample. Without a token they print the default 3–6 requests/page prior. `ndup run` does sync, embed, and analyze once.
+`memory://.ndup-store` is a local file store for trying the commands. Postgres 17 + pgvector is the supported store: pass `--database-url postgresql://ndup:ndup@localhost:5432/ndup` when a local Postgres is already running.
 
-`ndup web` and `ndup worker` exit 2. Those servers are Phase 2.
+`fake-bow-v1` needs no model download. For real embeddings: `uv sync --group dev --extra local`, then `--model BAAI/bge-base-en-v1.5`.
 
-Switch `--model` to `BAAI/bge-base-en-v1.5` after the weights are on disk. `ndup doctor --bench` times whatever model the config names.
+`uv run ndup run` does sync, embed, and analyze once.
+
+`pip install .` installs the same package when uv is not the tool you use.
+
+## Postgres
+
+Install Postgres and pgvector with the operating system package manager. `NDUP_DATABASE_URL` selects the server. When `pg_isready` finds a local server, `ndup init` creates the database and the `vector` extension.
+
+```bash
+# Debian or Ubuntu. Use the pgvector package that matches postgres -V
+# when postgresql-17-pgvector is not in the distro archive.
+sudo apt update
+sudo apt install postgresql postgresql-17-pgvector
+sudo -u postgres createuser --pwprompt ndup
+
+# macOS
+brew install postgresql@17 pgvector
+brew services start postgresql@17
+```
+
+```bash
+export NDUP_DATABASE_URL=postgresql://ndup:ndup@localhost:5432/ndup
+uv run ndup init --model fake-bow-v1
+uv run ndup sync
+uv run ndup embed
+uv run ndup analyze --full
+uv run ndup show clusters
+```
+
+## RunPod
+
+Optional, and separate from the local setup above. The laptop calls the API and does not build an image. GitHub Actions publishes `ghcr.io/anikal2001/ndup-pod:<tag>` on version tags. RunPod runs that image. Embeddings stay on the pod or the laptop.
+
+```bash
+export RUNPOD_API_KEY=...
+uv run ndup runpod connect
+uv run ndup runpod up
+uv run ndup runpod status
+uv run ndup runpod down
+```
+
+`ndup runpod up --cpu` starts a CPU pod on the same Secure Cloud network volume. `[deploy] target = "pod"` and `[deploy.pod]` are the config keys. `ingress = "runpod-proxy"` prints `https://<pod-id>-<port>.proxy.runpod.net`. `cloudflare-tunnel` opens no inbound port. The API key stays in the OS keychain or `RUNPOD_API_KEY`.
+
+Compose files in the repository are an optional extra. This quickstart does not use them.
