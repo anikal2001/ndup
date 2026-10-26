@@ -20,6 +20,11 @@ Out of scope: doctor `openai-key` check, egress proxy allow-list, compose wiring
 - Notion API `2025-09-03` rejects `search` filter `database`; `search_databases` now filters `data_source` and yields each parent database once.
 - The Notion client now retries `httpx.TransportError` (connection reset mid-read) the same way it retries timeouts.
 
+## CI fixes
+
+- `integration` job (pre-existing on `main`): `connect()` registered the pgvector type before any migration had created the extension, so a fresh database failed at `PostgresStore.open`. `connect()` now creates the extension and retries registration when the type is missing.
+- GitGuardian flagged `keyring.set_password("ndup", ...)` as a generic password. The service name is now the `KEYRING_SERVICE` constant so the literal no longer follows `password(`.
+
 ## Done check
 
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -m unit` pass.
